@@ -1,0 +1,75 @@
+version: '2'
+services:
+
+  elasticsearch:
+    container_name: elasticsearch
+    image: elasticsearch:latest
+    restart: always
+#    log_driver: "syslog"
+#    log_opt:
+#      tag: "elasticsearch"
+    volumes:
+      - ../docker-data/docker-elk/elasticsearch/templates:/etc/elasticsearch/templates
+      - ../docker-data/docker-elk/elasticsearch/data:/usr/share/elasticsearch/data
+    command: elasticsearch -Des.network.host=0.0.0.0 -DES_HEAP_SIZE=5g -Des.node.name="Main_Node"
+    ports:
+      - "9200:9200"
+    networks:
+      - main
+
+  kibana:
+    container_name: kibana
+    image: kibana:latest
+    restart: always
+    depends_on: 
+      - elasticsearch
+#    log_driver: "syslog"
+#    log_opt:
+#      tag: "kibana"
+#  volumes:
+#    - /opt/docker_containers/kibana/config:/opt/kibana/config
+    ports:
+      - "5601:5601"
+    environment:
+      ELASTICSEARCH_URL: "http://elasticsearch:9200"
+    links:
+      - elasticsearch:elasticsearch
+    networks:
+      - main
+
+  elasticsearch-curator:
+    container_name: curator
+    image: visity/elasticsearch-curator
+#    log_driver: "syslog"
+#    log_opt:
+#      tag: "elasticsearch-curator"
+    depends_on: 
+      - elasticsearch
+    restart: always
+    environment: 
+      INTERVAL_IN_HOURS: 24
+      OLDER_THAN_IN_DAYS: "7"
+    links:
+      - elasticsearch:es1
+    networks:
+      - main
+
+  elastalert:
+    container_name: elastalert
+    image: ivankrizsan/elastalert
+    cap_add:
+      - SYS_TIME
+      - SYS_NICE
+    depends_on: 
+      - elasticsearch
+    restart: always
+    environment:
+      SET_CONTAINER_TIMEZONE: "true"
+      CONTAINER_TIMEZONE: "America/New_York"
+    volumes:
+      - ../docker-data/docker-elk/elastalert/rules:/opt/rules
+    links:
+      - elasticsearch:elasticsearch_host
+
+networks:
+  main:
