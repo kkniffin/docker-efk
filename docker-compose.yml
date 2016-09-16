@@ -32,6 +32,7 @@ services:
       - "5601:5601"
     environment:
       ELASTICSEARCH_URL: "http://elasticsearch:9200"
+      NODE_OPTIONS: "--max-old-space-size=200"
     links:
       - elasticsearch:elasticsearch
     networks:
@@ -70,6 +71,21 @@ services:
       - ../docker-data/docker-elk/elastalert/rules:/opt/rules
     links:
       - elasticsearch:elasticsearch_host
+    networks:
+      - main
+
+  logstash:
+    container_name: logstash
+    image: logstash
+    restart: always
+#    environment:
+    volumes:
+      - ../docker-data/logstash/config:/config-dir
+    command: logstash -f /config-dir/logstash.conf
+    links:
+      - elasticsearch:elasticsearch
+    networks:
+      - main
 
 networks:
   main:
