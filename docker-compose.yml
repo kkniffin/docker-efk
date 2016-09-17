@@ -1,91 +1,163 @@
 version: '2'
 services:
 
-  elasticsearch:
-    container_name: elasticsearch
-    image: elasticsearch:latest
-    restart: always
-#    log_driver: "syslog"
-#    log_opt:
-#      tag: "elasticsearch"
-    volumes:
-      - ../docker-data/docker-elk/elasticsearch/templates:/etc/elasticsearch/templates
-      - ../docker-data/docker-elk/elasticsearch/data:/usr/share/elasticsearch/data
-    command: elasticsearch -Des.network.host=0.0.0.0 -DES_HEAP_SIZE=5g -Des.node.name="Main_Node"
-    ports:
-      - "9200:9200"
-    networks:
-      - main
+#  # Storage System for the Logfiles
+#  elasticsearch:
+#    image: elasticsearch:latest
+#    restart: always
+#    volumes:
+#      - ../docker-data/docker-elk/elasticsearch/templates:/etc/elasticsearch/templates
+#      - ../docker-data/docker-elk/elasticsearch/data:/usr/share/elasticsearch/data
+#    command: elasticsearch -Des.network.host=0.0.0.0 -DES_HEAP_SIZE=5g -Des.node.name="Main_Node"
+#    networks:
+#      - elasticsearch
 
-  kibana:
-    container_name: kibana
-    image: kibana:latest
-    restart: always
-    depends_on: 
-      - elasticsearch
-#    log_driver: "syslog"
-#    log_opt:
-#      tag: "kibana"
-#  volumes:
-#    - /opt/docker_containers/kibana/config:/opt/kibana/config
-    ports:
-      - "5601:5601"
-    environment:
-      ELASTICSEARCH_URL: "http://elasticsearch:9200"
-      NODE_OPTIONS: "--max-old-space-size=200"
-    links:
-      - elasticsearch:elasticsearch
-    networks:
-      - main
-
-  elasticsearch-curator:
-    container_name: curator
-    image: visity/elasticsearch-curator
-#    log_driver: "syslog"
-#    log_opt:
-#      tag: "elasticsearch-curator"
-    depends_on: 
-      - elasticsearch
-    restart: always
-    environment: 
-      INTERVAL_IN_HOURS: 24
-      OLDER_THAN_IN_DAYS: "7"
-    links:
-      - elasticsearch:es1
-    networks:
-      - main
-
-  elastalert:
-    container_name: elastalert
-    image: ivankrizsan/elastalert
-    cap_add:
-      - SYS_TIME
-      - SYS_NICE
-    depends_on: 
-      - elasticsearch
-    restart: always
-    environment:
-      SET_CONTAINER_TIMEZONE: "true"
-      CONTAINER_TIMEZONE: "America/New_York"
-    volumes:
-      - ../docker-data/docker-elk/elastalert/rules:/opt/rules
-    links:
-      - elasticsearch:elasticsearch_host
-    networks:
-      - main
-
-  logstash:
-    container_name: logstash
-    image: logstash
-    restart: always
+  # Interface for building Graphs of the Data in Elasticsearch
+#  kibana:
+#    image: kibana:latest
+#    restart: always
+#    depends_on: 
+#      - elasticsearch
+#    ports:
+#      - "5601:5601"
 #    environment:
+#      ELASTICSEARCH_URL: "http://elasticsearch:9200"
+#      NODE_OPTIONS: "--max-old-space-size=200"
+#    links:
+#      - elasticsearch:elasticsearch
+#    networks:
+#      - elasticsearch
+
+  # FluentD Receiver
+  fluentd-receiver:
+    build: ./build/fluentd
+    restart: always
+    depends_on:
+      - kafka
+    ports:
+      - 514:514
+      - 5000:5000
+    environment:
+      FLUENTD_CONF: "fluentd-receiver.conf"
     volumes:
-      - ../docker-data/logstash/config:/config-dir
-    command: logstash -f /config-dir/logstash.conf
-    links:
-      - elasticsearch:elasticsearch
+      - ../docker-data/fluend-receiver/config:/fluentd/etc
+    cap_add:
+      - NET_BIND_SERVICE
     networks:
-      - main
+      - kafka
+
+#  # Log Receiver for sending to Kafa
+#  logstash-receiver:
+#    build: ./build/logstash
+#    restart: always
+#    depends_on:
+#      - kafka
+#    ports:
+#      - "5000:5000"
+#      - "514:514/udp"
+#      - "514:514"
+#      - "5140:5140"
+#    volumes:
+#      - ../docker-data/logstash-receiver/logs:/log-dir
+#    cap_add:
+#      - NET_BIND_SERVICE
+#    command: /usr/share/logstash/bin/logstash -f /config-dir/logstash-receiver.conf
+#    networks:
+#      - kafka
+
+  # Log Indexer from Kafka
+#  logstash-indexer:
+#    build: ./build/logstash
+#    restart: always
+#    command: /opt/logstash/bin/logstash -f /config-dir/logstash-indexer.conf
+#    links:
+#      - elasticsearch:elasticsearch
+#    networks:
+#      - kafka
+#      - elasticsearch
+
+  # Used by Kafka
+  # https://hub.docker.com/_/zookeeper/
+  zookeeper:
+    container_name: zookeeper
+    image: zookeeper
+#    ports:
+#      - 2181:2181
+    environment:
+      ZOO_MY_ID: 1
+      ZOO_SERVERS: server.1=zookeeper:2888:3888
+    volumes:
+      - ../docker-data/zookeeper/data:/data
+      - ../docker-data/zookeeper/datalog:/datalog # Should be seperate and fast
+    networks:
+      - kafka
+
+  # Event Broker for handling high spikes
+  kafka:
+    image: wurstmeister/kafka
+    restart: always
+    depends_on: 
+      - zookeeper
+    ports:
+      - "9092"
+    environment:
+      KAFKA_ADVERTISED_HOST_NAME: ${DOCKER_HOST_IP}
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - kafka
+
+  ########################
+  ###### UTILS ###########
+  ########################
+
+  # Elastic Alerting Program for sending out Emails
+#  elastalert:
+#    image: ivankrizsan/elastalert
+#    cap_add:
+#      - SYS_TIME
+#      - SYS_NICE
+#    depends_on: 
+#      - elasticsearch
+#    restart: always
+#    environment:
+#      SET_CONTAINER_TIMEZONE: "true"
+#      CONTAINER_TIMEZONE: "America/New_York"
+#    volumes:
+#      - ../docker-data/docker-elk/elastalert/rules:/opt/rules
+#    links:
+#      - elasticsearch:elasticsearch_host
+#    networks:
+#      - main
+
+  # Curator used to auto-trim elasticsearch data
+#  elasticsearch-curator:
+#    image: visity/elasticsearch-curator
+#    depends_on: 
+#      - elasticsearch
+#    restart: always
+#    environment: 
+#      INTERVAL_IN_HOURS: 24
+#      OLDER_THAN_IN_DAYS: "7"
+#    links:
+#      - elasticsearch:es1
+#    networks:
+#      - main
+
+  # Sending Docker Events to Logstash for processing
+#  logspout:
+#    container_name: logspout
+#    image: bekt/logspout-logstash
+#    restart: always
+#    environment:
+#      ROUTE_URIS: logstash://logstash:5000
+#    volumes:
+#      - /var/run/docker.sock:/var/run/docker.sock
+#    networks:
+#      - main
 
 networks:
   main:
+  elasticsearch:
+  kafka:
