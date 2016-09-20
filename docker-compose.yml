@@ -2,134 +2,132 @@ version: '2'
 services:
 
 #  # Storage System for the Logfiles
-#  elasticsearch:
+  elasticsearch-master:
 #    image: elasticsearch:latest
-#    restart: always
-#    volumes:
-#      - ../docker-data/docker-elk/elasticsearch/templates:/etc/elasticsearch/templates
-#      - ../docker-data/docker-elk/elasticsearch/data:/usr/share/elasticsearch/data
-#    command: elasticsearch -Des.network.host=0.0.0.0 -DES_HEAP_SIZE=5g -Des.node.name="Main_Node"
-#    networks:
-#      - elasticsearch
+    build: build/elasticsearch
+    restart: always
+    logging:
+      driver: fluentd
+      options:
+        fluentd-address: "localhost:24224"
+        tag: "docker.elasticsearch"
+        fluentd-async-connect: "true"
+    ports:
+      - 9200:9200
+    volumes:
+      - ../docker-data/docker-elk/elasticsearch-master/data:/usr/share/elasticsearch/data
+    command: elasticsearch -D'ES_JAVA_OPTS=-Xms5g -Xmx5g' -DES_HEAP_SIZE=5g --network.host=0.0.0.0 --node.master=true --node.data=false --node.name="Master_Node" --cluster.name="Main_Cluster" --transport.tcp.compress=true --discovery.zen.minimum_master_nodes=1 --discovery.zen.ping.timeout=30s --discovery.zen.ping.unicast.hosts="elasticsearch-master" --discovery.zen.ping.multicast.enabled=false --discovery.zen.ping_timeout=30s
+    networks:
+      - elasticsearch
+
+  elasticsearch-slave:
+    image: elasticsearch:latest
+    restart: always
+    logging:
+      driver: fluentd
+      options:
+        fluentd-address: "localhost:24224"
+        tag: "docker.elasticsearch-slave-{{.ID}}"
+        fluentd-async-connect: "true"
+    ports:
+      - 9200
+    volumes:
+      - ../docker-data/docker-elk/elasticsearch-slave/data:/usr/share/elasticsearch/data
+    command: elasticsearch -DES_HEAP_SIZE=2g --network.host=0.0.0.0 --cluster.name="Main_Cluster" --node.master=false --node.data=true --transport.tcp.compress=true --discovery.zen.minimum_master_nodes=1 --discovery.zen.ping.timeout=30s --discovery.zen.ping.multicast.enabled=false --discovery.zen.ping.unicast.hosts="elasticsearch-master" --discovery.zen.ping_timeout=30s
+    networks:
+      - elasticsearch
 
   # Interface for building Graphs of the Data in Elasticsearch
-#  kibana:
-#    image: kibana:latest
-#    restart: always
-#    depends_on: 
-#      - elasticsearch
-#    ports:
-#      - "5601:5601"
-#    environment:
-#      ELASTICSEARCH_URL: "http://elasticsearch:9200"
-#      NODE_OPTIONS: "--max-old-space-size=200"
-#    links:
-#      - elasticsearch:elasticsearch
-#    networks:
-#      - elasticsearch
+  kibana:
+    image: kibana:latest
+    restart: always
+    depends_on: 
+      - elasticsearch-master
+    logging:
+      driver: fluentd
+      options:
+        fluentd-address: "localhost:24224"
+        tag: "docker.kibana"
+        fluentd-async-connect: "true"
+    ports:
+      - "5601:5601"
+    environment:
+      ELASTICSEARCH_URL: "http://elasticsearch:9200"
+      NODE_OPTIONS: "--max-old-space-size=200"
+    links:
+      - elasticsearch-master:elasticsearch
+    networks:
+      - main
+      - elasticsearch
 
   # FluentD Receiver
   fluentd-receiver:
     build: ./build/fluentd
     restart: always
     depends_on:
-      - kafka
+      - elasticsearch-master
+    logging:
+      driver: fluentd
+      options:
+        fluentd-address: "localhost:24224"
+        tag: "docker.fluentd-receiver"
+        fluentd-async-connect: "true"
+    environment:
+      ELASTICSEARCH_SERVER: elasticsearch # Server to connect to and load ES Templates
     ports:
       - 514:514
+      - 514:514/udp
       - 5000:5000
+      - 5044:5044
+      - 24224:24224
     environment:
       FLUENTD_CONF: "fluentd-receiver.conf"
+      FLUENTD_OPT: "-vv"
     volumes:
-      - ../docker-data/fluend-receiver/config:/fluentd/etc
+      - ../docker-data/docker-elk/fluentd-receiver/config:/fluentd/etc
+      - ../docker-data/docker-elk/fluentd-receiver/data:/data_log
     cap_add:
       - NET_BIND_SERVICE
+    links:
+      - elasticsearch-master:elasticsearch
     networks:
-      - kafka
+      - main
+      - elasticsearch
 
-#  # Log Receiver for sending to Kafa
-#  logstash-receiver:
-#    build: ./build/logstash
-#    restart: always
-#    depends_on:
-#      - kafka
-#    ports:
-#      - "5000:5000"
-#      - "514:514/udp"
-#      - "514:514"
-#      - "5140:5140"
-#    volumes:
-#      - ../docker-data/logstash-receiver/logs:/log-dir
-#    cap_add:
-#      - NET_BIND_SERVICE
-#    command: /usr/share/logstash/bin/logstash -f /config-dir/logstash-receiver.conf
-#    networks:
-#      - kafka
-
-  # Log Indexer from Kafka
-#  logstash-indexer:
-#    build: ./build/logstash
-#    restart: always
-#    command: /opt/logstash/bin/logstash -f /config-dir/logstash-indexer.conf
-#    links:
-#      - elasticsearch:elasticsearch
-#    networks:
-#      - kafka
-#      - elasticsearch
-
-  # Used by Kafka
-  # https://hub.docker.com/_/zookeeper/
-  zookeeper:
-    container_name: zookeeper
-    image: zookeeper
-#    ports:
-#      - 2181:2181
-    environment:
-      ZOO_MY_ID: 1
-      ZOO_SERVERS: server.1=zookeeper:2888:3888
-    volumes:
-      - ../docker-data/zookeeper/data:/data
-      - ../docker-data/zookeeper/datalog:/datalog # Should be seperate and fast
-    networks:
-      - kafka
-
-  # Event Broker for handling high spikes
-  kafka:
-    image: wurstmeister/kafka
-    restart: always
+  # Elastic Alerting Program for sending out Emails
+  elastalert:
+    image: ivankrizsan/elastalert
+    cap_add:
+      - SYS_TIME
+      - SYS_NICE
     depends_on: 
-      - zookeeper
-    ports:
-      - "9092"
+      - elasticsearch-master
+    logging:
+      driver: fluentd
+      options:
+        fluentd-address: "localhost:24224"
+        tag: "docker.elastalert"
+        fluentd-async-connect: "true"
+    restart: always
     environment:
-      KAFKA_ADVERTISED_HOST_NAME: ${DOCKER_HOST_IP}
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      SET_CONTAINER_TIMEZONE: "true"
+      CONTAINER_TIMEZONE: "America/New_York"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
+      - ../docker-data/docker-elk/elastalert/rules:/opt/rules
+    links:
+      - elasticsearch-master:elasticsearch_host
+      - elasticsearch-master:elasticsearch
     networks:
-      - kafka
+      - elasticsearch
+
+networks:
+  main:
+  elasticsearch:
 
   ########################
   ###### UTILS ###########
   ########################
 
-  # Elastic Alerting Program for sending out Emails
-#  elastalert:
-#    image: ivankrizsan/elastalert
-#    cap_add:
-#      - SYS_TIME
-#      - SYS_NICE
-#    depends_on: 
-#      - elasticsearch
-#    restart: always
-#    environment:
-#      SET_CONTAINER_TIMEZONE: "true"
-#      CONTAINER_TIMEZONE: "America/New_York"
-#    volumes:
-#      - ../docker-data/docker-elk/elastalert/rules:/opt/rules
-#    links:
-#      - elasticsearch:elasticsearch_host
-#    networks:
-#      - main
 
   # Curator used to auto-trim elasticsearch data
 #  elasticsearch-curator:
@@ -144,20 +142,3 @@ services:
 #      - elasticsearch:es1
 #    networks:
 #      - main
-
-  # Sending Docker Events to Logstash for processing
-#  logspout:
-#    container_name: logspout
-#    image: bekt/logspout-logstash
-#    restart: always
-#    environment:
-#      ROUTE_URIS: logstash://logstash:5000
-#    volumes:
-#      - /var/run/docker.sock:/var/run/docker.sock
-#    networks:
-#      - main
-
-networks:
-  main:
-  elasticsearch:
-  kafka:
