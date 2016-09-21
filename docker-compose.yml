@@ -1,39 +1,37 @@
 version: '2'
 services:
 
-#  # Storage System for the Logfiles
   elasticsearch-master:
-#    image: elasticsearch:latest
     build: build/elasticsearch
     restart: always
     logging:
       driver: fluentd
       options:
         fluentd-address: "localhost:24224"
-        tag: "docker.elasticsearch"
+        tag: "docker.elasticsearch-master"
         fluentd-async-connect: "true"
     ports:
       - 9200:9200
-    volumes:
-      - ../docker-data/docker-elk/elasticsearch-master/data:/usr/share/elasticsearch/data
-    command: elasticsearch -D'ES_JAVA_OPTS=-Xms5g -Xmx5g' -DES_HEAP_SIZE=5g --network.host=0.0.0.0 --node.master=true --node.data=false --node.name="Master_Node" --cluster.name="Main_Cluster" --transport.tcp.compress=true --discovery.zen.minimum_master_nodes=1 --discovery.zen.ping.timeout=30s --discovery.zen.ping.unicast.hosts="elasticsearch-master" --discovery.zen.ping.multicast.enabled=false --discovery.zen.ping_timeout=30s
+    command: elasticsearch -D'ES_JAVA_OPTS=-Xms5g -Xmx5g' -DES_HEAP_SIZE=5g --network.host=0.0.0.0 --node.master=true --node.data=false --node.name="Master_Node" --cluster.name="Main_Cluster" --transport.tcp.compress=true --discovery.zen.minimum_master_nodes=1 --discovery.zen.ping.timeout=30s --discovery.zen.ping.unicast.hosts="elasticsearch-master" --discovery.zen.ping.multicast.enabled=false 
+#--discovery.zen.ping_timeout=30s
     networks:
       - elasticsearch
 
   elasticsearch-slave:
     image: elasticsearch:latest
     restart: always
+    depends_on:
+      - elasticsearch-master
     logging:
       driver: fluentd
       options:
         fluentd-address: "localhost:24224"
         tag: "docker.elasticsearch-slave-{{.ID}}"
         fluentd-async-connect: "true"
-    ports:
-      - 9200
     volumes:
-      - ../docker-data/docker-elk/elasticsearch-slave/data:/usr/share/elasticsearch/data
-    command: elasticsearch -DES_HEAP_SIZE=2g --network.host=0.0.0.0 --cluster.name="Main_Cluster" --node.master=false --node.data=true --transport.tcp.compress=true --discovery.zen.minimum_master_nodes=1 --discovery.zen.ping.timeout=30s --discovery.zen.ping.multicast.enabled=false --discovery.zen.ping.unicast.hosts="elasticsearch-master" --discovery.zen.ping_timeout=30s
+      - ../docker-data/docker-elk/elasticsearch/data:/usr/share/elasticsearch/data
+    command: elasticsearch -DES_HEAP_SIZE=2g --network.host=0.0.0.0 --cluster.name="Main_Cluster" --node.master=false --node.data=true --transport.tcp.compress=true --discovery.zen.minimum_master_nodes=1 --discovery.zen.ping.multicast.enabled=false --discovery.zen.ping.unicast.hosts=elasticsearch-master
+# --discovery.zen.ping_timeout=30s
     networks:
       - elasticsearch
 
