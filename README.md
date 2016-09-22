@@ -1,6 +1,13 @@
-# THIS PAGE NEEDS WORK.
+# This page is a Major Work in Progress.
 
-Actually use FluentD over Logstash so need to rename to EFK
+## Components
+Docker-Compose
+  Elasticsearch
+  Kibana
+  Fluentd
+  Elastalert
 
 
+
+## Scaling Up Elasticsearch
 docker-compose scale elasticsearch-slave=3
