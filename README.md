@@ -42,4 +42,5 @@ curl -XPUT http://10.80.14.47:9200/.kibana/index-pattern/dhcp-* -d '{"title" : "
 curl -XPUT http://10.80.14.47:9200/.kibana/index-pattern/dns-* -d '{"title" : "dns-*",  "timeFieldName": "@timestamp"}'
 curl -XPUT http://10.80.14.47:9200/.kibana/index-pattern/fluent-* -d '{"title" : "fluent-*",  "timeFieldName": "@timestamp"}'
 curl -XPUT http://10.80.14.47:9200/.kibana/index-pattern/docker-* -d '{"title" : "docker-*",  "timeFieldName": "@timestamp"}'
+curl -XPUT http://10.80.14.47:9200/.kibana/index-pattern/cisco-* -d '{"title" : "cisco-*",  "timeFieldName": "@timestamp"}'
 curl -XPUT http://10.80.14.47:9200/.kibana/config/4.1.1 -d '{"defaultIndex" : "dns-*"}'
