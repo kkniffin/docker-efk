@@ -12,10 +12,10 @@ services:
         tag: "docker.elasticsearch-master"
         fluentd-async-connect: "true"
     environment:
-      ES_JAVA_OPTS: "-Xms2g -Xmx2g"
+      ES_JAVA_OPTS: "-Xms5g -Xmx5g"
     ports:
       - 9200:9200
-    #command: elasticsearch -Enetwork.host=0.0.0.0 -Enode.master=true -Enode.data=false -Enode.name="Master_Node" -Ecluster.name="Main_Cluster" -Etransport.tcp.compress=true -Ehttp.max_content_length=500mb -Ediscovery.zen.master_election.ignore_non_master_pings=true -Ediscovery.zen.fd.ping_timeout=30s -Ethread_pool.bulk.queue_size=5000
+    #5.x TEST# command: elasticsearch -Enetwork.host=0.0.0.0 -Enode.master=true -Enode.data=false -Enode.name="Master_Node" -Ecluster.name="Main_Cluster" -Etransport.tcp.compress=true -Ehttp.max_content_length=500mb -Ediscovery.zen.master_election.ignore_non_master_pings=true -Ediscovery.zen.fd.ping_timeout=30s -Ethread_pool.bulk.queue_size=5000
     command: elasticsearch --network.host=0.0.0.0 --node.master=true --node.data=false --node.name="Master_Node" --cluster.name="Main_Cluster" --http.max_content_length=500mb --discovery.zen.master_election.ignore_non_master_pings=true --discovery.zen.fd.ping_timeout=30s --thread_pool.bulk.queue_size=5000
     networks:
       - elasticsearch
@@ -25,7 +25,7 @@ services:
 #    build: build/elasticsearch
 #    restart: always
 #    depends_on:
-#      - elasticsearch-slave
+#      - elasticsearch-master
 #    logging:
 #      driver: fluentd
 #      options:
@@ -36,7 +36,7 @@ services:
 #      ES_JAVA_OPTS: "-Xms5g -Xmx5g"
 #    volumes:
 #      - ../docker-data/docker-elk/elasticsearch/data:/usr/share/elasticsearch/data
-#    command: elasticsearch -Enetwork.host=0.0.0.0 -Enode.master=false -Enode.data=false -Ecluster.name="Main_Cluster" -Etransport.tcp.compress=true -Ehttp.max_content_length=500mb -Ediscovery.zen.minimum_master_nodes=1 -Ediscovery.zen.ping.unicast.hosts=elasticsearch-master -Ediscovery.zen.master_election.ignore_non_master_pings=true -Ediscovery.zen.fd.ping_timeout=30s -Ethread_pool.bulk.queue_size=5000
+#    command: elasticsearch --network.host=0.0.0.0 --node.master=false --node.data=false --node.name="Master_Node" --cluster.name="Main_Cluster" --http.max_content_length=500mb --discovery.zen.master_election.ignore_non_master_pings=true --discovery.zen.fd.ping_timeout=30s --thread_pool.bulk.queue_size=5000
 #    networks:
 #      - elasticsearch
 
@@ -56,7 +56,7 @@ services:
       ES_JAVA_OPTS: "-Xms5g -Xmx5g"
     volumes:
       - ../docker-data/docker-elk/elasticsearch/data:/usr/share/elasticsearch/data
-    #command: elasticsearch -Enetwork.host=0.0.0.0 -Enode.master=false -Enode.data=true -Ecluster.name="Main_Cluster" -Etransport.tcp.compress=true -Ehttp.max_content_length=500mb -Ediscovery.zen.minimum_master_nodes=1 -Ediscovery.zen.ping.unicast.hosts=elasticsearch-master -Ediscovery.zen.master_election.ignore_non_master_pings=true -Ediscovery.zen.fd.ping_timeout=30s -Ethread_pool.bulk.queue_size=5000
+    #5.x TEST# command: elasticsearch -Enetwork.host=0.0.0.0 -Enode.master=false -Enode.data=true -Ecluster.name="Main_Cluster" -Etransport.tcp.compress=true -Ehttp.max_content_length=500mb -Ediscovery.zen.minimum_master_nodes=1 -Ediscovery.zen.ping.unicast.hosts=elasticsearch-master -Ediscovery.zen.master_election.ignore_non_master_pings=true -Ediscovery.zen.fd.ping_timeout=30s -Ethread_pool.bulk.queue_size=5000
     command: elasticsearch --network.host=0.0.0.0 --node.master=false --node.data=true --cluster.name="Main_Cluster" --http.max_content_length=500mb --discovery.zen.minimum_master_nodes=1 --discovery.zen.ping.unicast.hosts=elasticsearch-master --discovery.zen.master_election.ignore_non_master_pings=true --discovery.zen.fd.ping_timeout=30s --thread_pool.bulk.queue_size=5000
     networks:
       - elasticsearch
@@ -84,8 +84,8 @@ services:
       - main
       - elasticsearch
 
-  # FluentD Receiver
-  fluentd-receiver:
+  # FluentD Receiver Beats
+  fluentd-beats:
     build: ./build/fluentd
     restart: always
     depends_on:
@@ -94,27 +94,89 @@ services:
       driver: fluentd
       options:
         fluentd-address: "localhost:24224"
-        tag: "docker.fluentd-receiver"
+        tag: "docker.fluentd-beats"
         fluentd-async-connect: "true"
     ports:
-      - 514:514
-      - 514:514/udp
-      - 5000:5000
       - 5044:5044
-      - 24224:24224
     environment:
-      FLUENTD_CONF: "fluentd-receiver.conf"
+      FLUENTD_CONF: "fluentd-beats.conf"
       FLUENTD_OPT: "-vv"
-      ES_SERVER: elasticsearch # Server to connect to and load ES Templates
+      ES_SERVER: elasticsearch-master # Server to connect to and load ES Templates
       ES_USER: "elastic" # Username used to connect to ES to load Templates
       ES_PASSWORD: "changeme" # Password used to connect to ES to load Templates
     volumes:
-      - ../docker-data/docker-elk/fluentd-receiver/config:/fluentd/etc
+      #- ../docker-data/docker-elk/fluentd-receiver/config:/fluentd/etc
       - ../docker-data/docker-elk/fluentd-receiver/data:/data_log
     cap_add:
       - NET_BIND_SERVICE
     links:
-      - elasticsearch-master:elasticsearch
+      - elasticsearch-master:elasticsearch-master
+      - elasticsearch-slave:elasticsearch-slave
+    networks:
+      - main
+      - elasticsearch
+
+  # FluentD Receiver Syslog
+  fluentd-syslog:
+    build: ./build/fluentd
+    restart: always
+    depends_on:
+      - elasticsearch-master
+    logging:
+      driver: fluentd
+      options:
+        fluentd-address: "localhost:24224"
+        tag: "docker.fluentd-syslog"
+        fluentd-async-connect: "true"
+    ports:
+      - 514:514
+      - 514:514/udp
+    environment:
+      FLUENTD_CONF: "fluentd-syslog.conf"
+      FLUENTD_OPT: "-vv"
+      ES_SERVER: elasticsearch-master # Server to connect to and load ES Templates
+      ES_USER: "elastic" # Username used to connect to ES to load Templates
+      ES_PASSWORD: "changeme" # Password used to connect to ES to load Templates
+    volumes:
+      #- ../docker-data/docker-elk/fluentd-receiver/config:/fluentd/etc
+      - ../docker-data/docker-elk/fluentd-receiver/data:/data_log
+    cap_add:
+      - NET_BIND_SERVICE
+    links:
+      - elasticsearch-master:elasticsearch-master
+      - elasticsearch-slave:elasticsearch-slave
+    networks:
+      - main
+      - elasticsearch
+
+  # FluentD Receiver Docker
+  fluentd-docker:
+    build: ./build/fluentd
+    restart: always
+    depends_on:
+      - elasticsearch-master
+    logging:
+      driver: fluentd
+      options:
+        fluentd-address: "localhost:24224"
+        tag: "docker.fluentd-docker"
+        fluentd-async-connect: "true"
+    ports:
+      - 24224:24224
+    environment:
+      FLUENTD_CONF: "fluentd-docker.conf"
+      FLUENTD_OPT: "-vv"
+      ES_SERVER: elasticsearch-master # Server to connect to and load ES Templates
+      ES_USER: "elastic" # Username used to connect to ES to load Templates
+      ES_PASSWORD: "changeme" # Password used to connect to ES to load Templates
+    volumes:
+      #- ../docker-data/docker-elk/fluentd-receiver/config:/fluentd/etc
+      - ../docker-data/docker-elk/fluentd-receiver/data:/data_log
+    cap_add:
+      - NET_BIND_SERVICE
+    links:
+      - elasticsearch-master:elasticsearch-master
+      - elasticsearch-slave:elasticsearch-slave
     networks:
       - main
       - elasticsearch

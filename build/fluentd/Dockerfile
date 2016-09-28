@@ -16,6 +16,8 @@ RUN apk --no-cache --update add geoip-dev build-base ruby-dev grep sudo curl && 
 # Copy ES Templates and script to be loaded into ES
 COPY estemplates/* /data_estemplates/
 COPY load_es_templates.sh /usr/bin/
+# Load Additional Configuration Files
+COPY configs/* /fluentd/etc/
 EXPOSE 24284
 #CMD fluentd -c /fluentd/etc/$FLUENTD_CONF -p /fluentd/plugins $FLUENTD_OPT
 CMD /usr/bin/load_es_templates.sh && fluentd -c /fluentd/etc/$FLUENTD_CONF -p /fluentd/plugins $FLUENTD_OPT
